@@ -7,10 +7,15 @@ import type { MeshArrays, Projector } from '../types';
 const WALLS = palette.walls.map(linearRGB);
 const ROOFS = palette.roofs.map(linearRGB);
 
-/** Extrudes building footprints into walls + flat roofs. Also fills `footprints` for tree avoidance. */
-export function buildBuildings(layer: VectorTileLayer | undefined, project: Projector, footprints: PolygonGrid): MeshArrays {
+/**
+ * Extrudes building footprints into walls + flat roofs. Also fills `footprints` for tree avoidance
+ * and returns every visible wall as a collision segment (ax, az, bx, bz, minHeight, height).
+ */
+export function buildBuildings(layer: VectorTileLayer | undefined, project: Projector, footprints: PolygonGrid): { mesh: MeshArrays; walls: Float32Array } {
   const pos = new FloatBuf(1 << 18), nor = new FloatBuf(1 << 18), col = new FloatBuf(1 << 18), wall = new FloatBuf(1 << 18);
-  if (!layer) return { position: pos.result(), normal: nor.result(), color: col.result(), wall: wall.result() };
+  const walls = new FloatBuf(1 << 14);
+  const result = () => ({ mesh: { position: pos.result(), normal: nor.result(), color: col.result(), wall: wall.result() }, walls: walls.result() });
+  if (!layer) return result();
   const extent = layer.extent;
 
   for (let i = 0; i < layer.length; i++) {
@@ -66,6 +71,7 @@ export function buildBuildings(layer: VectorTileLayer | undefined, project: Proj
             u += len;
             continue;
           }
+          walls.push(ax, az, bx, bz, minH, h);
           let nx = sign > 0 ? dz : -dz, nz = sign > 0 ? -dx : dx;
           nx /= len; nz /= len;
           const flip = nx * -dz + nz * dx < 0; // face winding must agree with the outward normal
@@ -102,5 +108,5 @@ export function buildBuildings(layer: VectorTileLayer | undefined, project: Proj
       }
     }
   }
-  return { position: pos.result(), normal: nor.result(), color: col.result(), wall: wall.result() };
+  return result();
 }

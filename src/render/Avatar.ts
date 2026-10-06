@@ -97,22 +97,66 @@ export class Avatar {
     if (dx * dx + dz * dz > 1e-6) this.yawTarget = Math.atan2(dx, dz);
   }
 
-  /** `speed` in metres per second drives the walk cycle. */
-  update(dt: number, speed: number) {
-    const moving = Math.min(speed / 1.4, 1.6);
-    this.walkAmount += ((moving > 0.08 ? 1 : 0) - this.walkAmount) * (1 - Math.exp(-8 * dt));
-    this.phase += dt * (4 + moving * 5);
-    const swing = Math.sin(this.phase) * 0.65 * this.walkAmount;
-    this.legL.rotation.x = swing;
-    this.legR.rotation.x = -swing;
-    this.armL.rotation.x = -swing * 0.8;
-    this.armR.rotation.x = swing * 0.8;
-    this.body.position.y = Math.abs(Math.cos(this.phase)) * 0.05 * this.walkAmount;
-    this.body.scale.y = 1 + Math.sin(this.phase * 0.5) * 0.008 * (1 - this.walkAmount); // idle breathing
+  /** Set facing directly (yaw: forward = (sin, cos)); used when a controller owns turning. */
+  setYaw(yaw: number) {
+    this.yaw = this.yawTarget = yaw;
+    this.group.rotation.y = yaw;
+  }
 
-    let d = this.yawTarget - this.yaw;
-    d = Math.atan2(Math.sin(d), Math.cos(d));
-    this.yaw += d * (1 - Math.exp(-10 * dt));
+  /** Fade the figure (when the camera is pressed right against it). */
+  setOpacity(o: number) {
+    if (o === this.opacity) return;
+    this.opacity = o;
+    this.group.visible = o > 0.02;
+    this.body.traverse((m) => {
+      if (!(m instanceof THREE.Mesh)) return;
+      const mat = m.material as THREE.MeshLambertMaterial;
+      mat.transparent = o < 1;
+      mat.opacity = o;
+      mat.depthWrite = o >= 1;
+    });
+  }
+
+  private opacity = 1;
+  private lean = 0;
+  private bank = 0;
+  private air = 0;
+
+  /**
+   * `speed` in m/s drives a gait that blends from walk to sprint; `turnRate` (rad/s) banks
+   * the body into turns; `airborne` switches to a jump pose.
+   */
+  update(dt: number, speed: number, turnRate = 0, airborne = false) {
+    const k = (rate: number) => 1 - Math.exp(-rate * dt);
+    const run = THREE.MathUtils.smoothstep(speed, 2.2, 7.5); // 0 walk … 1 sprint
+    this.walkAmount += ((speed > 0.15 ? 1 : 0) - this.walkAmount) * k(10);
+    // ~1 stride cycle per 1.3 m walking, per 2.4 m sprinting.
+    this.phase += dt * (speed > 0.15 ? (speed / THREE.MathUtils.lerp(1.3, 2.4, run)) * Math.PI * 2 * 0.5 : 2);
+    this.air += ((airborne ? 1 : 0) - this.air) * k(14);
+
+    const legAmp = THREE.MathUtils.lerp(0.5, 1.0, run) * this.walkAmount;
+    const armAmp = THREE.MathUtils.lerp(0.45, 1.1, run) * this.walkAmount;
+    const swing = Math.sin(this.phase);
+    const g = 1 - this.air;
+    this.legL.rotation.x = swing * legAmp * g + -0.7 * this.air;
+    this.legR.rotation.x = -swing * legAmp * g + 0.35 * this.air;
+    this.armL.rotation.x = -swing * armAmp * g - 0.6 * this.air;
+    this.armR.rotation.x = swing * armAmp * g - 0.6 * this.air;
+    this.armL.rotation.z = -0.08 - 0.25 * run * this.walkAmount - 0.5 * this.air;
+    this.armR.rotation.z = 0.08 + 0.25 * run * this.walkAmount + 0.5 * this.air;
+
+    // Bounce on each footfall, lean forward when running, bank into turns.
+    this.body.position.y = Math.abs(Math.cos(this.phase)) * THREE.MathUtils.lerp(0.04, 0.09, run) * this.walkAmount * g;
+    this.lean += (run * 0.28 * this.walkAmount - this.lean) * k(6);
+    const bankTarget = THREE.MathUtils.clamp(-turnRate * 0.07 * Math.min(speed / 4, 1.5), -0.3, 0.3);
+    this.bank += (bankTarget - this.bank) * k(8);
+    this.body.rotation.set(this.lean, 0, this.bank);
+    this.body.scale.y = 1 + Math.sin(performance.now() * 0.0016) * 0.008 * (1 - this.walkAmount); // idle breathing
+
+    if (this.yaw !== this.yawTarget) {
+      const d = Math.atan2(Math.sin(this.yawTarget - this.yaw), Math.cos(this.yawTarget - this.yaw));
+      this.yaw += d * k(10);
+    }
     this.group.rotation.y = this.yaw;
   }
 }

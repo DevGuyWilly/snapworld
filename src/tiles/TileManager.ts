@@ -3,6 +3,7 @@ import { fromLocal, tileOf, type Origin } from '../geo/mercator';
 import { createBuildingMaterial, createGroundMaterial } from '../render/materials';
 import { buildTrees, disposeTrees } from '../render/Trees';
 import { PolygonGrid } from './builders/geom';
+import { TileCollision } from './Collision';
 import type { MeshArrays, Poi, TileRequest, TileResult } from './types';
 
 const Z = 14; // highest zoom with full detail in OpenMapTiles
@@ -16,6 +17,7 @@ interface Tile {
   group?: THREE.Group;
   pois: Poi[];
   footprints?: PolygonGrid;
+  collision?: TileCollision;
   state: 'loading' | 'ready' | 'error';
   lastUsed: number;
 }
@@ -106,6 +108,20 @@ export class TileManager extends EventTarget {
     return false;
   }
 
+  /** Push a vertical capsule out of walls and trees in every loaded tile; returns the total push. */
+  pushOut(p: THREE.Vector3, radius: number, height: number): { x: number; z: number } {
+    const push = { x: 0, z: 0 };
+    for (const t of this.tiles.values()) if (t.group?.visible) t.collision?.pushOut(p, radius, height, push);
+    return push;
+  }
+
+  /** Distance to the first building wall along a normalised ray (or `max`). */
+  raycast(o: THREE.Vector3, d: THREE.Vector3, max: number): number {
+    let best = max;
+    for (const t of this.tiles.values()) if (t.group?.visible && t.collision) best = Math.min(best, t.collision.raycast(o, d, best));
+    return best;
+  }
+
   get loadingCount() {
     let n = 0;
     for (const t of this.tiles.values()) if (t.state === 'loading') n++;
@@ -131,6 +147,7 @@ export class TileManager extends EventTarget {
       tile.group = this.buildGroup(res);
       tile.pois = res.pois ?? [];
       if (res.footprints) tile.footprints = PolygonGrid.unpack(res.footprints.coords, res.footprints.offsets);
+      tile.collision = new TileCollision(res.walls ?? new Float32Array(0), res.trees ?? new Float32Array(0));
       tile.state = 'ready';
       this.root.add(tile.group);
       this.dispatchEvent(new Event('tileloaded'));

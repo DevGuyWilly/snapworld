@@ -25,7 +25,7 @@ self.onmessage = async (e: MessageEvent<TileRequest>) => {
     ];
 
     const footprints = new PolygonGrid();
-    const buildings = buildBuildings(tile.layers.building, project, footprints);
+    const { mesh: buildings, walls } = buildBuildings(tile.layers.building, project, footprints);
     const ground = buildGround(tile, project, extent);
     const [bx0, bz0] = project(0, 0), [bx1, bz1] = project(extent, extent);
     const trees = placeTrees(req.x * 73856093 ^ req.y * 19349663, ground.greenAreas, ground.roadLines, footprints, { x0: bx0, z0: bz0, x1: bx1, z1: bz1 });
@@ -46,8 +46,8 @@ self.onmessage = async (e: MessageEvent<TileRequest>) => {
 
     const groundOut = { base: ground.base, green: ground.green, water: ground.water, roads: ground.roads };
     const packed = footprints.pack();
-    const result: TileResult = { id: req.id, buildings, ground: groundOut, trees, pois, footprints: packed };
-    const transfer: Transferable[] = [trees.buffer, packed.coords.buffer, packed.offsets.buffer];
+    const result: TileResult = { id: req.id, buildings, ground: groundOut, trees, pois, footprints: packed, walls };
+    const transfer: Transferable[] = [trees.buffer, packed.coords.buffer, packed.offsets.buffer, walls.buffer];
     for (const m of [buildings, ...Object.values(groundOut)] as MeshArrays[]) {
       for (const a of [m.position, m.normal, m.color, m.wall]) if (a) transfer.push(a.buffer);
     }

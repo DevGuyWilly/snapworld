@@ -23,13 +23,19 @@ Test a specific place without GPS: `http://localhost:5173/?lat=55.9522&lon=-3.20
 
 ## Controls
 
-| | Desktop | Phone |
-|---|---|---|
-| Pan | drag | one-finger drag |
-| Zoom | scroll | pinch |
-| Rotate / tilt | right-drag or ctrl-drag | two-finger twist / drag |
-| Walk mode | walking-person button, then WASD / arrows, drag to look, Shift to run | joystick (push to the edge to run), drag to look |
-| Back to me | arrow button | arrow button |
+**Map:** drag to pan, scroll or pinch to zoom, right-drag or two-finger gestures to rotate and tilt. Tap a place label to fly there.
+
+**Walk mode** (walking-person button):
+
+| | Keyboard + mouse | Phone | Gamepad |
+|---|---|---|---|
+| Move | WASD / arrows | left thumb (floating stick) | left stick |
+| Look | click to lock the mouse, then move it | drag on the right side | right stick |
+| Sprint | hold Shift | push the stick to the edge | L3 / RT |
+| Walk | hold Alt or toggle C | light push on the stick | light push |
+| Jump | Space | jump button | A |
+| Camera distance | scroll / V | — | Y |
+| Back to map | M or the button | button | — |
 
 ## How it works
 
@@ -37,7 +43,9 @@ Test a specific place without GPS: `http://localhost:5173/?lat=55.9522&lon=-3.20
 - `src/tiles/TileManager.ts` streams tiles around the camera and evicts old ones.
 - `src/render/materials.ts` contains the lit-window shader; `palette.ts` holds the night colours.
 - `src/geo/` is the GPS/compass service and a local metre-based coordinate frame that re-centres as you travel.
-- `src/camera/` holds the Snap-style map camera and walk mode (with building collisions).
+- `src/camera/MapCamera.ts` is the Snap-style map camera.
+- `src/player/` holds walk mode: unified input, the character controller (acceleration, turning, jumping, wall sliding) and the GTA-style third-person camera (collision-aware boom, auto-recentre, sprint FOV).
+- `src/tiles/Collision.ts` stores wall segments and tree trunks per tile, for player collisions and camera raycasts.
 - `src/labels/` covers place labels with collision-free placement and the category filter chips.
 
 See [PLAN.md](PLAN.md) for the roadmap.

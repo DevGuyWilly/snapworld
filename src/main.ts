@@ -3,7 +3,9 @@ import { makeOrigin, toLocal, fromLocal, distance, type LatLon } from './geo/mer
 import { LocationService } from './geo/location';
 import { TileManager } from './tiles/TileManager';
 import { MapCamera } from './camera/MapCamera';
-import { WalkMode } from './camera/WalkMode';
+import { Input } from './player/Input';
+import { PlayerController } from './player/PlayerController';
+import { ThirdPersonCamera } from './player/ThirdPersonCamera';
 import { MeMarker } from './render/MeMarker';
 import { Avatar } from './render/Avatar';
 import { palette } from './render/palette';
@@ -54,7 +56,19 @@ let tiles: TileManager | null = null;
 let exploringElsewhere = false; // true after searching a place
 let mode: 'map' | 'walk' = 'map';
 
-const walk = new WalkMode(camera, renderer.domElement, $('joystick'), (x, z, r) => tiles?.hitsBuilding(x, z, r) ?? false);
+const MAP_FOV = 42;
+const input = new Input(renderer.domElement, $('stick'), $('btn-jump'));
+const player = new PlayerController({ pushOut: (p, r, h) => tiles?.pushOut(p, r, h) ?? { x: 0, z: 0 } });
+const tpCam = new ThirdPersonCamera(camera, { raycast: (o, d, max) => tiles?.raycast(o, d, max) ?? max });
+input.addEventListener('exit', () => exitWalk());
+input.addEventListener('lockchange', () => {
+  if (mode === 'walk' && !isTouch) showHint(input.locked ? WALK_HINT : 'Click the map to look around with the mouse', !input.locked);
+});
+const WALK_HINT = 'WASD move · Shift sprint · Space jump · C walk · V camera · M map';
+
+function setAvatarLayer(layer: number) {
+  avatar.group.traverse((o) => o.layers.set(layer));
+}
 
 // ---------- World origin ----------
 function centreWorldOn(p: LatLon) {
@@ -109,10 +123,10 @@ gate.onPlace = (p) => {
 };
 
 // ---------- Camera tweens (map ⇄ walk) ----------
-let tween: { fromP: THREE.Vector3; fromQ: THREE.Quaternion; toP: THREE.Vector3; toQ: THREE.Quaternion; t: number; done: () => void } | null = null;
+let tween: { fromP: THREE.Vector3; fromQ: THREE.Quaternion; fromFov: number; toP: THREE.Vector3; toQ: THREE.Quaternion; toFov: number; t: number; done: () => void } | null = null;
 
-function startTween(toP: THREE.Vector3, toQ: THREE.Quaternion, done: () => void) {
-  tween = { fromP: camera.position.clone(), fromQ: camera.quaternion.clone(), toP, toQ, t: 0, done };
+function startTween(toP: THREE.Vector3, toQ: THREE.Quaternion, toFov: number, done: () => void) {
+  tween = { fromP: camera.position.clone(), fromQ: camera.quaternion.clone(), fromFov: camera.fov, toP, toQ, toFov, t: 0, done };
 }
 
 function stepTween(dt: number): boolean {
@@ -121,6 +135,8 @@ function stepTween(dt: number): boolean {
   const e = tween.t < 0.5 ? 4 * tween.t ** 3 : 1 - (-2 * tween.t + 2) ** 3 / 2;
   camera.position.lerpVectors(tween.fromP, tween.toP, e);
   camera.quaternion.slerpQuaternions(tween.fromQ, tween.toQ, e);
+  camera.fov = THREE.MathUtils.lerp(tween.fromFov, tween.toFov, e);
+  camera.updateProjectionMatrix();
   if (tween.t >= 1) {
     const done = tween.done;
     tween = null;
@@ -134,27 +150,32 @@ function enterWalk() {
   const start = me.group.visible && mapCam.following ? me.position.clone() : mapCam.controls.target.clone();
   mode = 'walk';
   mapCam.controls.enabled = false;
-  walk.enter(start, mapCam.azimuth);
-  avatar.faceDirection(-Math.sin(walk.yaw), -Math.cos(walk.yaw)); // face away from the camera
-  camera.near = 0.3;
+  // Face the way the map camera was looking.
+  player.spawn(start, mapCam.azimuth + Math.PI);
+  tpCam.reset(player);
+  camera.near = 0.1;
   camera.updateProjectionMatrix();
-  // Fly down to the walk camera pose.
-  const p = walk.desiredCamera(new THREE.Vector3());
-  const m = new THREE.Matrix4().lookAt(p, walk.lookTarget(new THREE.Vector3()), camera.up);
-  startTween(p, new THREE.Quaternion().setFromRotationMatrix(m), () => {});
+  setAvatarLayer(0); // at street level the avatar is occluded normally (by trees, corners…)
+  input.setEnabled(true);
+  const p = new THREE.Vector3(), q = new THREE.Quaternion();
+  tpCam.pose(player, p, q);
+  startTween(p, q, 58, () => {});
   setWalkUi(true);
-  showHint(isTouch ? 'Use the joystick to walk · drag to look around' : 'WASD / arrows to walk · drag to look · Shift to run');
+  showHint(isTouch ? 'Left thumb to move · drag on the right to look · push the stick fully to sprint' : 'Click the map to look around with the mouse', !isTouch);
 }
 
 function exitWalk(instant = false) {
   if (mode !== 'walk') return;
-  walk.exit();
+  input.setEnabled(false);
   mode = 'map';
   tween = null;
-  const fromP = camera.position.clone(), fromQ = camera.quaternion.clone();
-  mapCam.jumpTo(walk.position, 220, walk.yaw);
+  setAvatarLayer(OVERLAY);
+  avatar.setOpacity(1);
+  const fromP = camera.position.clone(), fromQ = camera.quaternion.clone(), fromFov = camera.fov;
+  mapCam.jumpTo(player.position.clone().setY(0), 220, tpCam.yaw);
   mapCam.setFollowing(false);
   camera.near = 2;
+  camera.fov = MAP_FOV;
   camera.updateProjectionMatrix();
   setWalkUi(false);
   if (instant) {
@@ -164,7 +185,8 @@ function exitWalk(instant = false) {
   const toP = camera.position.clone(), toQ = camera.quaternion.clone();
   camera.position.copy(fromP);
   camera.quaternion.copy(fromQ);
-  startTween(toP, toQ, () => {
+  camera.fov = fromFov;
+  startTween(toP, toQ, MAP_FOV, () => {
     mapCam.controls.enabled = true;
     mapCam.controls.update();
   });
@@ -173,18 +195,19 @@ function exitWalk(instant = false) {
 function setWalkUi(on: boolean) {
   $('btn-walk').classList.toggle('on', on);
   $('btn-walk').title = on ? 'Back to map' : 'Walk mode';
-  $('joystick').classList.toggle('hidden', !on || !isTouch);
+  $('btn-jump').classList.toggle('hidden', !on || !isTouch);
+  document.body.classList.toggle('walking', on);
   $('btn-compass').classList.toggle('hidden', on);
   if (!on) $('hint').classList.add('hidden');
 }
 
 let hintTimer = 0;
-function showHint(text: string) {
+function showHint(text: string, sticky = false) {
   const el = $('hint');
   el.textContent = text;
   el.classList.remove('hidden');
   clearTimeout(hintTimer);
-  hintTimer = window.setTimeout(() => el.classList.add('hidden'), 5000);
+  if (!sticky) hintTimer = window.setTimeout(() => el.classList.add('hidden'), 6000);
 }
 
 // ---------- HUD ----------
@@ -286,12 +309,18 @@ renderer.setAnimationLoop((ts) => {
   const t = timer.getElapsed();
 
   const tweening = stepTween(dt);
+  if (mode === 'walk') {
+    const frame = input.read(dt);
+    if (!tweening) {
+      player.update(dt, frame, tpCam.yaw);
+      tpCam.update(dt, frame, player);
+    }
+  }
   const gpsOnMap = me.isPlaced && !exploringElsewhere && !!location_.state.position;
   me.group.visible = gpsOnMap && mode === 'map';
   if (mode === 'map' && !tweening) mapCam.update(dt, mapCam.following && gpsOnMap ? me.position : null);
-  walk.update(dt, mode === 'walk' && !tweening);
 
-  const focus = mode === 'walk' ? walk.position : mapCam.controls.target;
+  const focus = mode === 'walk' ? player.position : mapCam.controls.target;
   const dist = mode === 'walk' ? 120 : mapCam.distance;
 
   if (tiles?.getOrigin()) {
@@ -301,7 +330,8 @@ renderer.setAnimationLoop((ts) => {
       tiles.setOrigin(makeOrigin(fromLocal(tiles.getOrigin()!, shift.x, shift.z)));
       mapCam.controls.target.sub(shift);
       camera.position.sub(shift);
-      walk.shift(shift);
+      player.position.sub(shift);
+      tpCam.shift(shift);
       labels.clear();
       syncMarker(true);
     }
@@ -312,10 +342,11 @@ renderer.setAnimationLoop((ts) => {
   me.update(dt, t, dist);
   if (mode === 'walk') {
     avatar.group.visible = true;
-    avatar.group.position.copy(walk.position);
+    avatar.group.position.copy(player.position);
     avatar.group.scale.setScalar(1);
-    avatar.faceDirection(walk.moveDir.x, walk.moveDir.z);
-    avatar.update(dt, walk.speed);
+    avatar.setYaw(player.facing);
+    avatar.update(dt, player.horizontalSpeed, player.turnRate, !player.grounded);
+    avatar.setOpacity(tweening ? 1 : tpCam.characterOpacity);
   } else {
     avatar.group.visible = gpsOnMap;
     if (gpsOnMap) {
@@ -370,6 +401,6 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
-if (import.meta.env.DEV) Object.assign(window, { __snap: { renderer, scene, camera, mapCam, walk, labels, enterWalk, exitWalk, get tiles() { return tiles; } } });
+if (import.meta.env.DEV) Object.assign(window, { __snap: { renderer, scene, camera, mapCam, player, tpCam, input, labels, enterWalk, exitWalk, get tiles() { return tiles; } } });
 
 boot();

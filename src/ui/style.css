@@ -115,9 +115,12 @@ button.link { margin-top: 14px; background: none; border: 0; color: var(--ink-di
 #me-tag { padding: 3px 9px; border-radius: 8px; background: rgba(12, 13, 28, 0.85); color: #fff; font-size: 13px; font-weight: 700; }
 #me-tag span { color: #3ddc84; font-weight: 600; font-size: 12px; }
 
-/* Joystick (walk mode) */
-.joystick {
-  position: absolute; left: 28px; bottom: calc(36px + var(--safe-bottom)); width: 120px; height: 120px; border-radius: 50%;
-  background: rgba(18, 20, 40, 0.45); border: 2px solid rgba(255,255,255,.18); display: grid; place-items: center; touch-action: none;
+/* Walk mode: floating stick (spawns under the left thumb) and jump button */
+.stick {
+  position: fixed; width: 132px; height: 132px; margin: -66px 0 0 -66px; border-radius: 50%; pointer-events: none;
+  background: rgba(18, 20, 40, 0.35); border: 2px solid rgba(255,255,255,.22); display: grid; place-items: center;
 }
-.joystick .knob { width: 52px; height: 52px; border-radius: 50%; background: rgba(240,241,255,.9); box-shadow: 0 4px 12px rgba(0,0,0,.4); pointer-events: none; }
+.stick .knob { width: 56px; height: 56px; border-radius: 50%; background: rgba(240,241,255,.9); box-shadow: 0 4px 12px rgba(0,0,0,.4); }
+.jump { position: absolute; right: 24px; bottom: calc(150px + var(--safe-bottom)); width: 68px; height: 68px; touch-action: none; }
+.jump svg { width: 30px; height: 30px; }
+body.walking .label { pointer-events: none; }

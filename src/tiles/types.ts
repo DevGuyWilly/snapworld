@@ -36,6 +36,8 @@ export interface TileResult {
   pois?: Poi[];
   /** Building outlines for walk-mode collisions (see PolygonGrid.pack). */
   footprints?: { coords: Float32Array; offsets: Uint32Array };
+  /** Wall segments for collisions, stride 6: ax, az, bx, bz, minHeight, height. */
+  walls?: Float32Array;
 }
 
 /** Project tile pixel coords to local metres. */
