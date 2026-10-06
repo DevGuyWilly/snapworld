@@ -2,6 +2,8 @@
 
 A Snap Map-style 3D map of the real world around your live location, built with three.js and OpenStreetMap data (via OpenFreeMap vector tiles, no API key needed).
 
+**Live:** https://devguywilly.github.io/snapworld/ (deployed by GitHub Actions on every push to `main`)
+
 ## Run it
 
 ```bash
