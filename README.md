@@ -21,6 +21,8 @@ Open the printed Network URL on the phone and accept the self-signed certificate
 
 Test a specific place without GPS: `http://localhost:5173/?lat=55.9522&lon=-3.2003`
 
+Lighting follows the real sun at the place you're viewing (night → golden hour → day). Preview another time of day with `&hour=13` (local hours, e.g. `18.25` for 18:15).
+
 ## Controls
 
 **Map:** drag to pan, scroll or pinch to zoom, right-drag or two-finger gestures to rotate and tilt. Tap a place label to fly there.
@@ -41,7 +43,7 @@ Test a specific place without GPS: `http://localhost:5173/?lat=55.9522&lon=-3.20
 
 - `src/tiles/tile.worker.ts` fetches z14 vector tiles and builds geometry off the main thread: extruded buildings (`builders/buildings.ts`), roads, parks and water (`builders/ground.ts`), seeded procedural trees (`builders/trees.ts`).
 - `src/tiles/TileManager.ts` streams tiles around the camera and evicts old ones.
-- `src/render/materials.ts` contains the lit-window shader; `palette.ts` holds the night colours.
+- `src/render/materials.ts` contains the lit-window shader and the day/night colour blend; `palette.ts` holds both palettes; `Atmosphere.ts` sets lights, sky and fog from the sun position (`src/geo/sun.ts`).
 - `src/geo/` is the GPS/compass service and a local metre-based coordinate frame that re-centres as you travel.
 - `src/camera/MapCamera.ts` is the Snap-style map camera.
 - `src/player/` holds walk mode: unified input, the character controller (acceleration, turning, jumping, wall sliding) and the GTA-style third-person camera (collision-aware boom, auto-recentre, sprint FOV).

@@ -9,6 +9,8 @@ import { ThirdPersonCamera } from './player/ThirdPersonCamera';
 import { MeMarker } from './render/MeMarker';
 import { Avatar } from './render/Avatar';
 import { palette } from './render/palette';
+import { Atmosphere } from './render/Atmosphere';
+import { sceneTime } from './geo/sun';
 import { LabelLayer } from './labels/LabelLayer';
 import { CATEGORIES, type CategoryId } from './labels/categories';
 import { Gate } from './ui/Gate';
@@ -31,12 +33,9 @@ renderer.setClearColor(palette.background); // cleared manually (two render pass
 const fog = new THREE.Fog(palette.fog, 400, 1600);
 scene.fog = fog;
 
-const hemi = new THREE.HemisphereLight(0xd2d4f2, 0x2a2a48, 1.15);
-const moon = new THREE.DirectionalLight(0xdcdcf5, 0.95);
-moon.position.set(-0.55, 1, 0.35);
-hemi.layers.enableAll();
-moon.layers.enableAll();
-scene.add(hemi, moon);
+// Day/night lighting from the real sun at the place being viewed.
+const atmosphere = new Atmosphere();
+scene.add(atmosphere.hemi, atmosphere.sun);
 
 const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 2, 6000);
 const mapCam = new MapCamera(camera, renderer.domElement);
@@ -359,6 +358,15 @@ renderer.setAnimationLoop((ts) => {
     }
   }
   lastAvatarPos.copy(avatar.group.position);
+
+  const origin = tiles?.getOrigin();
+  if (origin) {
+    const here = fromLocal(origin, focus.x, focus.z);
+    atmosphere.update(sceneTime(), here.lat, here.lon, dt);
+    renderer.setClearColor(atmosphere.clear);
+    fog.color.copy(atmosphere.fog);
+    avatar.setDaylight(atmosphere.state.day);
+  }
 
   if (mode === 'walk') {
     fog.near = 60;

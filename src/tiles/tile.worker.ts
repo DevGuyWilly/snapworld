@@ -49,7 +49,7 @@ self.onmessage = async (e: MessageEvent<TileRequest>) => {
     const result: TileResult = { id: req.id, buildings, ground: groundOut, trees, pois, footprints: packed, walls };
     const transfer: Transferable[] = [trees.buffer, packed.coords.buffer, packed.offsets.buffer, walls.buffer];
     for (const m of [buildings, ...Object.values(groundOut)] as MeshArrays[]) {
-      for (const a of [m.position, m.normal, m.color, m.wall]) if (a) transfer.push(a.buffer);
+      for (const a of [m.position, m.normal, m.color, m.dayColor, m.wall]) if (a) transfer.push(a.buffer);
     }
     postMessage(result, { transfer });
   } catch (err) {

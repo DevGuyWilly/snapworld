@@ -103,6 +103,20 @@ export class Avatar {
     this.group.rotation.y = yaw;
   }
 
+  /** Less self-illumination by day, when the sun already lights the figure. */
+  setDaylight(day: number) {
+    const glow = THREE.MathUtils.lerp(0.35, 0.06, day);
+    if (Math.abs(glow - this.glow) < 0.005) return;
+    this.glow = glow;
+    this.body.traverse((m) => {
+      if (!(m instanceof THREE.Mesh)) return;
+      const mat = m.material as THREE.MeshLambertMaterial;
+      mat.emissive.copy(mat.color).multiplyScalar(glow);
+    });
+  }
+
+  private glow = 0.35;
+
   /** Fade the figure (when the camera is pressed right against it). */
   setOpacity(o: number) {
     if (o === this.opacity) return;

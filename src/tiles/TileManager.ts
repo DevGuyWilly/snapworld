@@ -188,6 +188,7 @@ function toGeometry(a: MeshArrays): THREE.BufferGeometry {
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(a.position, 3));
   g.setAttribute('color', new THREE.BufferAttribute(a.color, 3));
+  g.setAttribute('dayColor', new THREE.BufferAttribute(a.dayColor, 3, true));
   if (a.normal) {
     g.setAttribute('normal', new THREE.BufferAttribute(a.normal, 3));
   } else {

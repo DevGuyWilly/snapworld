@@ -1,20 +1,22 @@
 import earcut from 'earcut';
 import { classifyRings, type VectorTileLayer } from '@mapbox/vector-tile';
 import { clipRing, signedArea, hash2, FloatBuf, PolygonGrid, type Pt } from './geom';
-import { palette, linearRGB } from '../../render/palette';
+import { palette, dayPalette, linearRGB, rgb8 } from '../../render/palette';
 import type { MeshArrays, Projector } from '../types';
 
 const WALLS = palette.walls.map(linearRGB);
 const ROOFS = palette.roofs.map(linearRGB);
+const WALLS_DAY = dayPalette.walls.map(rgb8);
+const ROOFS_DAY = dayPalette.roofs.map(rgb8);
 
 /**
  * Extrudes building footprints into walls + flat roofs. Also fills `footprints` for tree avoidance
  * and returns every visible wall as a collision segment (ax, az, bx, bz, minHeight, height).
  */
 export function buildBuildings(layer: VectorTileLayer | undefined, project: Projector, footprints: PolygonGrid): { mesh: MeshArrays; walls: Float32Array } {
-  const pos = new FloatBuf(1 << 18), nor = new FloatBuf(1 << 18), col = new FloatBuf(1 << 18), wall = new FloatBuf(1 << 18);
+  const pos = new FloatBuf(1 << 18), nor = new FloatBuf(1 << 18), col = new FloatBuf(1 << 18), wall = new FloatBuf(1 << 18), day = new FloatBuf(1 << 18);
   const walls = new FloatBuf(1 << 14);
-  const result = () => ({ mesh: { position: pos.result(), normal: nor.result(), color: col.result(), wall: wall.result() }, walls: walls.result() });
+  const result = () => ({ mesh: { position: pos.result(), normal: nor.result(), color: col.result(), dayColor: new Uint8Array(day.result()), wall: wall.result() }, walls: walls.result() });
   if (!layer) return result();
   const extent = layer.extent;
 
@@ -49,8 +51,8 @@ export function buildBuildings(layer: VectorTileLayer | undefined, project: Proj
       if (h <= minH + 0.5) continue;
 
       footprints.add(flats[0]);
-      const wc = WALLS[Math.floor(seed * WALLS.length)];
-      const rc = ROOFS[Math.floor(hash2(seed, 3.1) * ROOFS.length)];
+      const wi = Math.floor(seed * WALLS.length), ri = Math.floor(hash2(seed, 3.1) * ROOFS.length);
+      const wc = WALLS[wi], rc = ROOFS[ri], wd = WALLS_DAY[wi % WALLS_DAY.length], rd = ROOFS_DAY[ri % ROOFS_DAY.length];
 
       // Walls
       flats.forEach((flat, r) => {
@@ -82,6 +84,7 @@ export function buildBuildings(layer: VectorTileLayer | undefined, project: Proj
             pos.push(v[0], v[1], v[2]);
             nor.push(nx, 0, nz);
             col.push(wc[0], wc[1], wc[2]);
+            day.push(wd[0], wd[1], wd[2]);
             wall.push(v[3], v[4], seed);
           }
           u += len;
@@ -103,6 +106,7 @@ export function buildBuildings(layer: VectorTileLayer | undefined, project: Proj
           pos.push(all[v * 2], h, all[v * 2 + 1]);
           nor.push(0, 1, 0);
           col.push(rc[0], rc[1], rc[2]);
+          day.push(rd[0], rd[1], rd[2]);
           wall.push(-1, h, seed);
         }
       }

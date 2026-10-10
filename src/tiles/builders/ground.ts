@@ -1,23 +1,27 @@
 import earcut from 'earcut';
 import { classifyRings, type VectorTile } from '@mapbox/vector-tile';
 import { clipRing, FloatBuf, type Pt } from './geom';
-import { palette, linearRGB } from '../../render/palette';
+import { palette, dayPalette, linearRGB, rgb8, type Rgb8 } from '../../render/palette';
 import type { MeshArrays, Projector } from '../types';
 
 type RGB = [number, number, number];
+/** A surface colour for night (linear float) and day (sRGB bytes). */
+type Paint = { n: RGB; d: Rgb8 };
+type PaletteKey = keyof typeof dayPalette & keyof typeof palette;
+const paint = (k: PaletteKey): Paint => ({ n: linearRGB(palette[k] as number), d: rgb8(dayPalette[k] as number) });
 
-const GREEN: Record<string, RGB> = {
-  grass: linearRGB(palette.grass),
-  park: linearRGB(palette.grass),
-  wood: linearRGB(palette.wood),
-  forest: linearRGB(palette.wood),
-  pitch: linearRGB(palette.pitch),
-  cemetery: linearRGB(palette.grass),
-  playground: linearRGB(palette.pitch),
-  golf_course: linearRGB(palette.grass),
-  stadium: linearRGB(palette.pitch),
-  wetland: linearRGB(palette.wood),
-  farmland: linearRGB(palette.grass),
+const GREEN: Record<string, Paint> = {
+  grass: paint('grass'),
+  park: paint('grass'),
+  wood: paint('wood'),
+  forest: paint('wood'),
+  pitch: paint('pitch'),
+  cemetery: paint('grass'),
+  playground: paint('pitch'),
+  golf_course: paint('grass'),
+  stadium: paint('pitch'),
+  wetland: paint('wood'),
+  farmland: paint('grass'),
 };
 
 const ROAD_WIDTH: Record<string, number> = {
@@ -54,7 +58,7 @@ export function buildGround(tile: VectorTile, project: Projector, extent: number
 
   // Base square covering the whole tile.
   const [x0, z0] = project(0, 0), [x1, z1] = project(extent, extent);
-  layers.base.quad([x0, z0], [x1, z0], [x1, z1], [x0, z1], linearRGB(palette.ground));
+  layers.base.quad([x0, z0], [x1, z0], [x1, z1], [x0, z1], paint('ground'));
 
   // Green areas
   for (const name of ['landcover', 'landuse', 'park']) {
@@ -75,7 +79,7 @@ export function buildGround(tile: VectorTile, project: Projector, extent: number
 
   // Water
   const water = tile.layers.water;
-  const waterColor = linearRGB(palette.water);
+  const waterColor = paint('water');
   if (water) {
     for (let i = 0; i < water.length; i++) {
       const f = water.feature(i);
@@ -99,14 +103,14 @@ export function buildGround(tile: VectorTile, project: Projector, extent: number
       const cls = String(f.properties.class);
       if (cls === 'rail' || cls === 'transit' || f.properties.brunnel === 'tunnel') continue;
       if (f.type === 3) {
-        const c = linearRGB(cls === 'path' ? palette.pedestrian : palette.road);
+        const c = paint(cls === 'path' ? 'pedestrian' : 'road');
         for (const poly of classifyRings(f.loadGeometry())) fillPolygon(layers.roads, poly, project, extent, c);
         continue;
       }
       if (f.type !== 2) continue;
       const width = ROAD_WIDTH[cls] ?? 6;
       const major = cls === 'motorway' || cls === 'trunk' || cls === 'primary';
-      const color = linearRGB(cls === 'path' || cls === 'track' ? palette.path : major ? palette.roadMajor : palette.road);
+      const color = paint(cls === 'path' || cls === 'track' ? 'path' : major ? 'roadMajor' : 'road');
       for (const line of f.loadGeometry()) {
         const pts = projectLine(line, project);
         layers.roads.ribbon(pts, width, color);
@@ -131,7 +135,7 @@ function projectLine(line: Pt[], project: Projector): number[] {
   return out;
 }
 
-function fillPolygon(layer: Layer, poly: Pt[][], project: Projector, extent: number, color: RGB): number[][] | null {
+function fillPolygon(layer: Layer, poly: Pt[][], project: Projector, extent: number, color: Paint): number[][] | null {
   const rings: number[][] = [];
   for (let r = 0; r < poly.length; r++) {
     const c = clipRing(poly[r], extent);
@@ -156,13 +160,16 @@ class Layer {
   pos = new FloatBuf(1 << 15);
   col = new FloatBuf(1 << 15);
 
-  private v(x: number, z: number, c: RGB) {
+  day = new FloatBuf(1 << 15);
+
+  private v(x: number, z: number, c: Paint) {
     this.pos.push(x, 0, z);
-    this.col.push(c[0], c[1], c[2]);
+    this.col.push(c.n[0], c.n[1], c.n[2]);
+    this.day.push(c.d[0], c.d[1], c.d[2]);
   }
 
   /** Emits a triangle facing up regardless of the input winding. */
-  tri(flat: number[], a: number, b: number, c: number, color: RGB) {
+  tri(flat: number[], a: number, b: number, c: number, color: Paint) {
     const ax = flat[a * 2], az = flat[a * 2 + 1], bx = flat[b * 2], bz = flat[b * 2 + 1], cx = flat[c * 2], cz = flat[c * 2 + 1];
     const up = (bz - az) * (cx - ax) - (bx - ax) * (cz - az) > 0;
     this.v(ax, az, color);
@@ -170,14 +177,14 @@ class Layer {
     else { this.v(cx, cz, color); this.v(bx, bz, color); }
   }
 
-  quad(a: number[], b: number[], c: number[], d: number[], color: RGB) {
+  quad(a: number[], b: number[], c: number[], d: number[], color: Paint) {
     const flat = [...a, ...b, ...c, ...d];
     this.tri(flat, 0, 1, 2, color);
     this.tri(flat, 0, 2, 3, color);
   }
 
   /** Thick polyline: one quad per segment plus a disc at every joint so corners stay filled. */
-  ribbon(pts: number[], width: number, color: RGB) {
+  ribbon(pts: number[], width: number, color: Paint) {
     const hw = width / 2;
     for (let i = 0; i + 3 < pts.length; i += 2) {
       const ax = pts[i], az = pts[i + 1], bx = pts[i + 2], bz = pts[i + 3];
@@ -189,7 +196,7 @@ class Layer {
     for (let i = 0; i < pts.length; i += 2) this.disc(pts[i], pts[i + 1], hw, color);
   }
 
-  disc(x: number, z: number, r: number, color: RGB) {
+  disc(x: number, z: number, r: number, color: Paint) {
     const n = 8;
     const flat = [x, z];
     for (let k = 0; k < n; k++) flat.push(x + Math.cos((k / n) * Math.PI * 2) * r, z + Math.sin((k / n) * Math.PI * 2) * r);
@@ -197,6 +204,6 @@ class Layer {
   }
 
   result(): MeshArrays {
-    return { position: this.pos.result(), color: this.col.result() };
+    return { position: this.pos.result(), color: this.col.result(), dayColor: new Uint8Array(this.day.result()) };
   }
 }

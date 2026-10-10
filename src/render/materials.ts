@@ -1,5 +1,12 @@
 import * as THREE from 'three';
 
+/** 0 = night palette, 1 = day palette. Shared by every map material; driven by Atmosphere. */
+export const dayUniform = { value: 0 };
+
+const DAY_VERTEX_HEAD = 'attribute vec3 dayColor;\nuniform float uDay;';
+// Day colours arrive as sRGB bytes; convert to linear before blending with the night colour.
+const DAY_VERTEX_MIX = '#include <color_vertex>\nvColor.rgb = mix(vColor.rgb, pow(dayColor, vec3(2.2)), uDay);';
+
 /**
  * Buildings: flat navy Lambert surfaces with procedural windows.
  * Walls carry (u = metres along the wall, v = height, seed); a hash per window cell
@@ -8,15 +15,18 @@ import * as THREE from 'three';
 export function createBuildingMaterial(): THREE.MeshLambertMaterial {
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
   mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uDay = dayUniform;
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute vec3 wall;\nvarying vec3 vWall;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWall = wall;');
+      .replace('#include <common>', `#include <common>\nattribute vec3 wall;\nvarying vec3 vWall;\n${DAY_VERTEX_HEAD}`)
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWall = wall;')
+      .replace('#include <color_vertex>', DAY_VERTEX_MIX);
 
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
         `#include <common>
         varying vec3 vWall;
+        uniform float uDay;
         float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
         float band(float f, float a, float b, float w) { return smoothstep(a - w, a + w, f) * (1.0 - smoothstep(b - w, b + w, f)); }`,
       )
@@ -40,9 +50,12 @@ export function createBuildingMaterial(): THREE.MeshLambertMaterial {
           vec3 glow = mix(cool, warm, step(0.88, h21(cell.yx + vWall.z * 17.3)));
           // Far away, windows shrink below a pixel: fade to their average so walls don't shimmer.
           float detail = 1.0 - smoothstep(0.25, 0.6, max(w.x, w.y));
-          float litAmount = mix(0.18, win * lit, detail);
+          float litAmount = mix(0.18, win * lit, detail) * (1.0 - uDay);
           totalEmissiveRadiance += glow * litAmount * 1.05;
-          diffuseColor.rgb *= 1.0 - win * (1.0 - lit) * 0.35 * detail;
+          diffuseColor.rgb *= 1.0 - win * (1.0 - lit) * 0.35 * detail * (1.0 - uDay);
+          // Daytime: windows read as cool, slightly reflective glass.
+          vec3 glass = vec3(0.32, 0.4, 0.56);
+          diffuseColor.rgb = mix(diffuseColor.rgb, glass, win * detail * uDay * 0.75);
         }`,
       );
   };
@@ -51,5 +64,12 @@ export function createBuildingMaterial(): THREE.MeshLambertMaterial {
 
 export function createGroundMaterial(): THREE.MeshLambertMaterial {
   // Ground layers are coplanar; they don't write depth and are ordered with renderOrder instead.
-  return new THREE.MeshLambertMaterial({ vertexColors: true, depthWrite: false });
+  const mat = new THREE.MeshLambertMaterial({ vertexColors: true, depthWrite: false });
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uDay = dayUniform;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>\n${DAY_VERTEX_HEAD}`)
+      .replace('#include <color_vertex>', DAY_VERTEX_MIX);
+  };
+  return mat;
 }

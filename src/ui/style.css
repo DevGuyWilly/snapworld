@@ -124,3 +124,9 @@ button.link { margin-top: 14px; background: none; border: 0; color: var(--ink-di
 .jump { position: absolute; right: 24px; bottom: calc(150px + var(--safe-bottom)); width: 68px; height: 68px; touch-action: none; }
 .jump svg { width: 30px; height: 30px; }
 body.walking .label { pointer-events: none; }
+
+/* Daytime labels: dark text on a light halo, like Snap's day map */
+body.day .label .name, body.day .label .sub {
+  color: #1f2140; text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 1px 2px #fff;
+}
+body.day .label .icon { background: #2b2e5a; color: #fff; }

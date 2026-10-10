@@ -13,6 +13,8 @@ export interface MeshArrays {
   position: Float32Array;
   normal?: Float32Array;
   color: Float32Array;
+  /** Daytime colour as normalised sRGB bytes (blended in the shader by time of day). */
+  dayColor: Uint8Array;
   /** Building walls only: (distance along wall, height, per-building seed); u < 0 marks roofs. */
   wall?: Float32Array;
 }
