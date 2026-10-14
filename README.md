@@ -49,5 +49,6 @@ Lighting follows the real sun at the place you're viewing (night → golden hour
 - `src/player/` holds walk mode: unified input, the character controller (acceleration, turning, jumping, wall sliding) and the GTA-style third-person camera (collision-aware boom, auto-recentre, sprint FOV).
 - `src/tiles/Collision.ts` stores wall segments and tree trunks per tile, for player collisions and camera raycasts.
 - `src/labels/` covers place labels with collision-free placement and the category filter chips.
+- `src/tiles/builders/signs.ts` pins named shops, cafés, restaurants, bars and hotels to their street-facing wall; `src/render/Signs.ts` draws the real names on fascia boards near the viewer.
 
 See [PLAN.md](PLAN.md) for the roadmap.

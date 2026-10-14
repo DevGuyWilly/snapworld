@@ -10,6 +10,7 @@ import { MeMarker } from './render/MeMarker';
 import { Avatar } from './render/Avatar';
 import { palette } from './render/palette';
 import { Atmosphere } from './render/Atmosphere';
+import { SignLayer } from './render/Signs';
 import { sceneTime } from './geo/sun';
 import { LabelLayer } from './labels/LabelLayer';
 import { CATEGORIES, type CategoryId } from './labels/categories';
@@ -51,6 +52,9 @@ renderer.autoClear = false;
 const location_ = new LocationService();
 const gate = new Gate();
 const labels = new LabelLayer($('labels'));
+const signs = new SignLayer();
+scene.add(signs.group);
+let signTimer = 0;
 let tiles: TileManager | null = null;
 let exploringElsewhere = false; // true after searching a place
 let mode: 'map' | 'walk' = 'map';
@@ -75,6 +79,7 @@ function centreWorldOn(p: LatLon) {
   if (mode === 'walk') exitWalk(true);
   tiles.setOrigin(makeOrigin(p));
   labels.clear();
+  signs.clear();
   mapCam.jumpTo(new THREE.Vector3(0, 0, 0));
   syncMarker(true);
 }
@@ -332,6 +337,7 @@ renderer.setAnimationLoop((ts) => {
       player.position.sub(shift);
       tpCam.shift(shift);
       labels.clear();
+      signs.clear();
       syncMarker(true);
     }
     tiles.update(focus.x, focus.z, mode === 'map' && dist > 700 ? 2 : 1);
@@ -391,7 +397,16 @@ renderer.setAnimationLoop((ts) => {
       const b = $('me-bubble').getBoundingClientRect(), tg = $('me-tag').getBoundingClientRect();
       reserved.push([Math.min(b.left, tg.left) - 10, b.top - 10, Math.max(b.right, tg.right) + 10, tg.bottom + 10]);
     }
-    labels.update(tiles.visiblePois(), camera, focus, dist, performance.now(), reserved);
+    // Shop signs near the viewer: always at street level, and on the map once zoomed right in.
+    if ((signTimer -= dt) <= 0) {
+      signTimer = 0.25;
+      const range = mode === 'walk' ? 150 : dist < 200 ? 220 : 0;
+      signs.update(range ? tiles.signsNear(focus.x, focus.z, range) : [], focus);
+    }
+    // At street level a sign already names the place, so skip its floating label nearby.
+    const signed = mode === 'walk' ? signs.signedPois(focus, 70) : null;
+    const pois = signed?.size ? tiles.visiblePois().filter((p) => !signed.has(p)) : tiles.visiblePois();
+    labels.update(pois, camera, focus, dist, performance.now(), reserved);
   }
   ($('compass-needle') as unknown as SVGElement).style.transform = `rotate(${(-mapCam.azimuth * 180) / Math.PI}deg)`;
   updateRecenter();

@@ -11,12 +11,14 @@ const ROOFS_DAY = dayPalette.roofs.map(rgb8);
 
 /**
  * Extrudes building footprints into walls + flat roofs. Also fills `footprints` for tree avoidance
- * and returns every visible wall as a collision segment (ax, az, bx, bz, minHeight, height).
+ * and returns every visible wall as a collision segment (ax, az, bx, bz, minHeight, height)
+ * plus its outward normal (for placing shop signs).
  */
-export function buildBuildings(layer: VectorTileLayer | undefined, project: Projector, footprints: PolygonGrid): { mesh: MeshArrays; walls: Float32Array } {
+export function buildBuildings(layer: VectorTileLayer | undefined, project: Projector, footprints: PolygonGrid): { mesh: MeshArrays; walls: Float32Array; wallNormals: Float32Array } {
   const pos = new FloatBuf(1 << 18), nor = new FloatBuf(1 << 18), col = new FloatBuf(1 << 18), wall = new FloatBuf(1 << 18), day = new FloatBuf(1 << 18);
   const walls = new FloatBuf(1 << 14);
-  const result = () => ({ mesh: { position: pos.result(), normal: nor.result(), color: col.result(), dayColor: new Uint8Array(day.result()), wall: wall.result() }, walls: walls.result() });
+  const wallNormals = new FloatBuf(1 << 13); // outward (nx, nz) per wall, parallel to `walls`
+  const result = () => ({ mesh: { position: pos.result(), normal: nor.result(), color: col.result(), dayColor: new Uint8Array(day.result()), wall: wall.result() }, walls: walls.result(), wallNormals: wallNormals.result() });
   if (!layer) return result();
   const extent = layer.extent;
 
@@ -76,6 +78,7 @@ export function buildBuildings(layer: VectorTileLayer | undefined, project: Proj
           walls.push(ax, az, bx, bz, minH, h);
           let nx = sign > 0 ? dz : -dz, nz = sign > 0 ? -dx : dx;
           nx /= len; nz /= len;
+          wallNormals.push(nx, nz);
           const flip = nx * -dz + nz * dx < 0; // face winding must agree with the outward normal
           const A = [ax, minH, az, u, minH], B = [bx, minH, bz, u + len, minH];
           const C = [bx, h, bz, u + len, h], D = [ax, h, az, u, h];

@@ -28,6 +28,21 @@ export interface Poi {
   z: number;
 }
 
+/** A shopfront fascia sign pinned to a building wall. */
+export interface Sign {
+  /** Index into the tile's `pois`. */
+  poi: number;
+  cat: string;
+  x: number;
+  y: number;
+  z: number;
+  /** Outward wall normal (the sign faces this way). */
+  nx: number;
+  nz: number;
+  /** Widest the board may be without overhanging the wall (m). */
+  maxW: number;
+}
+
 export interface TileResult {
   id: number;
   error?: string;
@@ -40,6 +55,7 @@ export interface TileResult {
   footprints?: { coords: Float32Array; offsets: Uint32Array };
   /** Wall segments for collisions, stride 6: ax, az, bx, bz, minHeight, height. */
   walls?: Float32Array;
+  signs?: Sign[];
 }
 
 /** Project tile pixel coords to local metres. */

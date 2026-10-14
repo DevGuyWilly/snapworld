@@ -4,7 +4,7 @@ import { createBuildingMaterial, createGroundMaterial } from '../render/material
 import { buildTrees, disposeTrees } from '../render/Trees';
 import { PolygonGrid } from './builders/geom';
 import { TileCollision } from './Collision';
-import type { MeshArrays, Poi, TileRequest, TileResult } from './types';
+import type { MeshArrays, Poi, Sign, TileRequest, TileResult } from './types';
 
 const Z = 14; // highest zoom with full detail in OpenMapTiles
 const MAX_CACHED = 40;
@@ -18,6 +18,7 @@ interface Tile {
   pois: Poi[];
   footprints?: PolygonGrid;
   collision?: TileCollision;
+  signs: Sign[];
   state: 'loading' | 'ready' | 'error';
   lastUsed: number;
 }
@@ -122,6 +123,18 @@ export class TileManager extends EventTarget {
     return best;
   }
 
+  /** Shop signs (with their place) within `r` metres of (x, z), from visible tiles. */
+  signsNear(x: number, z: number, r: number): { sign: Sign; poi: Poi; key: string }[] {
+    const out: { sign: Sign; poi: Poi; key: string }[] = [];
+    for (const t of this.tiles.values()) {
+      if (!t.group?.visible) continue;
+      t.signs.forEach((s, i) => {
+        if (Math.abs(s.x - x) < r && Math.abs(s.z - z) < r && Math.hypot(s.x - x, s.z - z) < r) out.push({ sign: s, poi: t.pois[s.poi], key: `${t.key}#${i}` });
+      });
+    }
+    return out;
+  }
+
   get loadingCount() {
     let n = 0;
     for (const t of this.tiles.values()) if (t.state === 'loading') n++;
@@ -129,7 +142,7 @@ export class TileManager extends EventTarget {
   }
 
   private load(x: number, y: number, key: string) {
-    const tile: Tile = { key, x, y, pois: [], state: 'loading', lastUsed: performance.now() };
+    const tile: Tile = { key, x, y, pois: [], signs: [], state: 'loading', lastUsed: performance.now() };
     this.tiles.set(key, tile);
     const gen = this.generation;
     const req: TileRequest = {
@@ -146,6 +159,7 @@ export class TileManager extends EventTarget {
       }
       tile.group = this.buildGroup(res);
       tile.pois = res.pois ?? [];
+      tile.signs = res.signs ?? [];
       if (res.footprints) tile.footprints = PolygonGrid.unpack(res.footprints.coords, res.footprints.offsets);
       tile.collision = new TileCollision(res.walls ?? new Float32Array(0), res.trees ?? new Float32Array(0));
       tile.state = 'ready';
